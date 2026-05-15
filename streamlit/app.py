@@ -2,7 +2,9 @@ import streamlit as st
 import yfinance as yf
 from datetime import datetime
 import pytz
-import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import io
 
 st.set_page_config(page_title="Market Intelligence", page_icon="💰", layout="wide")
 
@@ -56,6 +58,46 @@ def get_history(ticker, period="1mo"):
         return hist
     except:
         return None
+
+def create_chart(hist, ticker):
+    if hist is None or hist.empty or 'Close' not in hist.columns:
+        return None
+    
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 4), height_ratios=[3, 1], sharex=True, 
+                                    gridspec_kw={'hspace': 0.05})
+    fig.patch.set_facecolor('#0a0e1a')
+    
+    dates = hist.index
+    close = hist['Close']
+    
+    ax1.set_facecolor('#0d1220')
+    ax1.plot(dates, close, color='#22c55e', linewidth=1.5)
+    ax1.set_ylabel('Price ($)', color='#8b9ab5', fontsize=9)
+    ax1.tick_params(axis='y', labelcolor='#8b9ab5')
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+    ax1.spines['bottom'].set_visible(False)
+    ax1.spines['left'].set_visible(False)
+    ax1.grid(True, alpha=0.2, color='#1a2332')
+    
+    if 'Volume' in hist.columns:
+        volume = hist['Volume'].fillna(0)
+        colors = ['#22c55e' if close.iloc[i] >= close.iloc[0] else '#ef4444' for i in range(len(volume))]
+        ax2.set_facecolor('#0d1220')
+        ax2.bar(dates, volume, color=colors, alpha=0.6, width=0.8)
+        ax2.set_ylabel('Volume', color='#8b9ab5', fontsize=9)
+        ax2.tick_params(axis='y', labelcolor='#8b9ab5')
+        ax2.spines['top'].set_visible(False)
+        ax2.spines['right'].set_visible(False)
+        ax2.spines['bottom'].set_visible(False)
+        ax2.spines['left'].set_visible(False)
+        ax2.grid(True, alpha=0.2, color='#1a2332')
+    
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+    ax2.xaxis.set_major_locator(mdates.DayLocator(interval=5))
+    plt.xticks(rotation=45, color='#8b9ab5', fontsize=8)
+    
+    return fig
 
 def calculate_target_stop(current, type_, target_pct=0.20, stop_pct=0.08):
     if type_ == "LONG":
@@ -117,7 +159,7 @@ for i, (ticker, name, change, trend, bias) in enumerate(sectors):
         color = "green" if change.startswith("+") else "red"
         st.markdown(f"**{ticker}** {trend}  \n{name}  \n:{color}[{change}]  \n{bias}")
 
-st.markdown("### Trade Ideas (Real-Time Prices + 1M Chart)")
+st.markdown("### Trade Ideas (Real-Time Prices)")
 
 trade_tickers = ["NVDA", "JPM", "TLT", "GOOGL", "SMCI"]
 prices = {}
@@ -134,54 +176,42 @@ trades = [
     ("SMCI", "Super Micro", "SHORT", "Accounting concerns real. Audit firm red flags. Customer concentration risk.", "⭐⭐⭐", "Delayed 10-K"),
 ]
 
-cols = st.columns(3)
 for i, (ticker, company, type_, thesis, stars, catalyst) in enumerate(trades):
-    with cols[i % 3]:
-        current_price = prices.get(ticker)
-        hist = histories.get(ticker)
-        
-        if current_price:
-            target, stop = calculate_target_stop(current_price, type_, target_pct=0.20, stop_pct=0.08)
-            upside = ((target - current_price) / current_price * 100)
-            downside = ((current_price - stop) / current_price * 100) if type_ == "LONG" else ((stop - current_price) / current_price * 100)
-            rrr = abs(upside / downside) if downside > 0 else 0
-            upside_display = f"+{upside:.1f}%"
-            downside_display = f"-{downside:.1f}%"
-        else:
-            target = stop = 0
-            upside = downside = rrr = 0
-            upside_display = downside_display = "—"
+    current_price = prices.get(ticker)
+    hist = histories.get(ticker)
+    
+    if current_price:
+        target, stop = calculate_target_stop(current_price, type_, target_pct=0.20, stop_pct=0.08)
+        upside = ((target - current_price) / current_price * 100)
+        downside = ((current_price - stop) / current_price * 100) if type_ == "LONG" else ((stop - current_price) / current_price * 100)
+        rrr = abs(upside / downside) if downside > 0 else 0
+        upside_display = f"+{upside:.1f}%"
+        downside_display = f"-{downside:.1f}%"
+    else:
+        target = stop = 0
+        upside = downside = rrr = 0
+        upside_display = downside_display = "—"
 
-        badge_color = "green" if type_ == "LONG" else "red"
-        st.markdown(f"**{ticker}** :{badge_color}-badge[{type_}]  \n{company}")
-        if current_price:
-            st.markdown(f"💰 **${current_price:.2f}**")
-        st.markdown(f"_{thesis}_")
-        
-        if current_price:
-            st.markdown(f"**Target:** ${target:.2f} ({upside_display}) | **Stop:** ${stop:.2f} ({downside_display})")
-            st.markdown(f"{stars} RRR: {rrr:.1f}R | Cat: {catalyst}")
-        else:
-            st.markdown(f"**Target:** — | **Stop:** —")
-            st.markdown(f"{stars} Cat: {catalyst}")
-        
-        if hist is not None and not hist.empty and 'Close' in hist.columns:
-            close_data = hist['Close'].rename(ticker)
-            min_val = close_data.min()
-            max_val = close_data.max()
-            margin = (max_val - min_val) * 0.1
-            y_min = min_val - margin
-            y_max = max_val + margin
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.caption("📈 Price (1M)")
-                st.line_chart(close_data, height=120, color=["#22c55e"])
-            with col2:
-                if 'Volume' in hist.columns:
-                    st.caption("📊 Volume")
-                    volume_data = hist['Volume'].fillna(0)
-                    st.bar_chart(volume_data, height=120, color=["#3b82f6"])
+    badge_color = "green" if type_ == "LONG" else "red"
+    st.markdown(f"### {ticker} :{badge_color}-badge[{type_}]  \n**{company}**")
+    if current_price:
+        st.markdown(f"💰 **${current_price:.2f}**")
+    st.markdown(f"_{thesis}_")
+    
+    if current_price:
+        st.markdown(f"**Target:** ${target:.2f} ({upside_display}) | **Stop:** ${stop:.2f} ({downside_display})")
+        st.markdown(f"{stars} RRR: {rrr:.1f}R | Cat: {catalyst}")
+    else:
+        st.markdown(f"**Target:** — | **Stop:** —")
+        st.markdown(f"{stars} Cat: {catalyst}")
+    
+    if hist is not None and not hist.empty:
+        fig = create_chart(hist, ticker)
+        if fig:
+            st.pyplot(fig)
+    
+    if i < len(trades) - 1:
+        st.markdown("---")
 
 st.markdown("### ⚠️ Risk Radar")
 st.markdown(":red[FED PUT DISSOLVING] Powell pushing back on rate cuts. Market pricing 3 cuts, Fed may deliver 1.")
@@ -191,4 +221,4 @@ st.markdown(":orange[GEOPOLITICAL SHOCK] Taiwan, Middle East, or Russia could sp
 st.markdown("---")
 st.markdown("> 💰 **Trader's Note:** Remember: the market will test your patience before it tests your conviction. Scale in, don't all-in.")
 st.markdown("---")
-st.caption("Targets: 20% upside / 8% stop. Charts: 1-month daily prices & volume. Prices via Yahoo Finance (~15min delayed). Not financial advice.")
+st.caption("Targets: 20% upside / 8% stop. Charts: 1-month price + volume (shared x-axis). Prices via Yahoo Finance (~15min delayed). Not financial advice.")
