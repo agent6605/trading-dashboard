@@ -47,6 +47,17 @@ def get_10y_yield():
     except:
         return None
 
+@st.cache_data(ttl=3600)
+def get_history(ticker, period="1mo"):
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period=period)
+        if not hist.empty:
+            return hist['Close']
+        return None
+    except:
+        return None
+
 def calculate_target_stop(current, type_, target_pct=0.20, stop_pct=0.08):
     if type_ == "LONG":
         target = current * (1 + target_pct)
@@ -63,14 +74,12 @@ try:
     ten_year_yield = get_10y_yield() or 4.32
     market_time = datetime.now(pytz.timezone('US/Eastern')).strftime("%-I:%M %p ET")
     market_date = datetime.now(pytz.timezone('US/Eastern')).strftime("%b %d, %Y")
-    sentiment = "RISK-ON" if sp500_change > 0 else "RISK-OFF" if sp500_change < -0.5 else "NEUTRAL"
 except:
     sp500_change = 0.87
     vix_level = 14.2
     ten_year_yield = 4.32
     market_time = "Market Closed"
     market_date = datetime.now().strftime("%b %d, %Y")
-    sentiment = "NEUTRAL"
 
 st.title("💰 Market Intelligence")
 st.markdown(f"**Daily Trading Dashboard** • {market_date} {market_time}")
@@ -84,7 +93,7 @@ c4.metric("10Y", f"{ten_year_yield:.2f}%" if ten_year_yield else "—")
 
 st.markdown("---")
 st.markdown("### Macro Summary")
-st.write("Markets ripping on Fed pivot speculation. Tech leading charge as bond yields compress. Smart money rotating into cyclicals - this feels like the early innings of a new leg up. But watch for gamma squeeze if VIX drops below 13.")
+st.write("Markets ripping on Fed pivot speculation. Tech leading charge as bond yields compress. Smart money rotating into cyclicals - this feels like the early innings of a new leg up.")
 st.markdown("**Macro Drivers:** Fed Pivot | Yield Compression | Tech Rally | Dollar Weakening")
 
 st.markdown("### Sector Heatmap")
@@ -109,25 +118,29 @@ for i, (ticker, name, change, trend, bias) in enumerate(sectors):
         color = "green" if change.startswith("+") else "red"
         st.markdown(f"**{ticker}** {trend}  \n{name}  \n:{color}[{change}]  \n{bias}")
 
-st.markdown("### Trade Ideas (Real-Time Prices)")
+st.markdown("### Trade Ideas (Real-Time Prices + 1M Chart)")
 
 trade_tickers = ["NVDA", "JPM", "TLT", "GOOGL", "SMCI"]
 prices = {}
+histories = {}
 for t in trade_tickers:
     prices[t] = get_price(t)
+    histories[t] = get_history(t, "1mo")
 
 trades = [
-    ("NVDA", "NVIDIA", "LONG", "AI infrastructure build-out. Blackwell margins expanding. Every hyperscaler deploying more GPUs.", "⭐⭐⭐", "Q2 earnings"),
-    ("JPM", "JPMorgan", "LONG", "Net interest income floor in. Credit quality better than feared. At 11x earnings - cheap for quality.", "⭐⭐", "Fed cuts boost NII"),
-    ("TLT", "20+ Year Treasury", "SHORT", "Bond bears throwing in towel. Yield curve steepening signals recession risk being priced out.", "⭐⭐⭐", "Inflation re-accelerates"),
-    ("GOOGL", "Alphabet", "LONG", "Cloud accelerating. AI integration driving ad efficiency. Waymo becoming real. Trading at discount to meta.", "⭐⭐", "Gemini 2.0 adoption"),
-    ("SMCI", "Super Micro", "SHORT", "Accounting concerns real. Audit firm red flags. Customer concentration risk. Liquidity story - buyer beware.", "⭐⭐⭐", "Delayed 10-K"),
+    ("NVDA", "NVIDIA", "LONG", "AI infrastructure build-out. Blackwell margins expanding.", "⭐⭐⭐", "Q2 earnings"),
+    ("JPM", "JPMorgan", "LONG", "Net interest income floor in. Credit quality better than feared.", "⭐⭐", "Fed cuts boost NII"),
+    ("TLT", "20+ Year Treasury", "SHORT", "Bond bears throwing in towel. Yield curve steepening signals recession risk.", "⭐⭐⭐", "Inflation re-accelerates"),
+    ("GOOGL", "Alphabet", "LONG", "Cloud accelerating. AI integration driving ad efficiency. Waymo becoming real.", "⭐⭐", "Gemini 2.0 adoption"),
+    ("SMCI", "Super Micro", "SHORT", "Accounting concerns real. Audit firm red flags. Customer concentration risk.", "⭐⭐⭐", "Delayed 10-K"),
 ]
 
 cols = st.columns(3)
 for i, (ticker, company, type_, thesis, stars, catalyst) in enumerate(trades):
     with cols[i % 3]:
         current_price = prices.get(ticker)
+        history = histories.get(ticker)
+        
         if current_price:
             target, stop = calculate_target_stop(current_price, type_, target_pct=0.20, stop_pct=0.08)
             upside = ((target - current_price) / current_price * 100)
@@ -145,12 +158,19 @@ for i, (ticker, company, type_, thesis, stars, catalyst) in enumerate(trades):
         if current_price:
             st.markdown(f"💰 **${current_price:.2f}**")
         st.markdown(f"_{thesis}_")
+        
         if current_price:
             st.markdown(f"**Target:** ${target:.2f} ({upside_display}) | **Stop:** ${stop:.2f} ({downside_display})")
             st.markdown(f"{stars} RRR: {rrr:.1f}R | Cat: {catalyst}")
         else:
             st.markdown(f"**Target:** — | **Stop:** —")
             st.markdown(f"{stars} Cat: {catalyst}")
+        
+        if history is not None and not history.empty:
+            st.markdown("###")
+            st.caption(f"📈 1M Price Chart")
+            chart_data = history.rename(ticker)
+            st.line_chart(chart_data, height=150, color=["#22c55e"])
 
 st.markdown("### ⚠️ Risk Radar")
 st.markdown(":red[FED PUT DISSOLVING] Powell pushing back on rate cuts. Market pricing 3 cuts, Fed may deliver 1.")
@@ -160,4 +180,4 @@ st.markdown(":orange[GEOPOLITICAL SHOCK] Taiwan, Middle East, or Russia could sp
 st.markdown("---")
 st.markdown("> 💰 **Trader's Note:** Remember: the market will test your patience before it tests your conviction. Scale in, don't all-in.")
 st.markdown("---")
-st.caption("Targets calculated as 20% upside / 8% stop from current price. Prices via Yahoo Finance (~15min delayed). Not financial advice.")
+st.caption("Targets: 20% upside / 8% stop. Chart: 1-month daily prices. Prices via Yahoo Finance (~15min delayed). Not financial advice.")
