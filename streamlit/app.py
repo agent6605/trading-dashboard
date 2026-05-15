@@ -47,13 +47,20 @@ def get_10y_yield():
     except:
         return None
 
+def calculate_target_stop(current, type_, target_pct=0.20, stop_pct=0.08):
+    if type_ == "LONG":
+        target = current * (1 + target_pct)
+        stop = current * (1 - stop_pct)
+    else:
+        target = current * (1 - target_pct)
+        stop = current * (1 + stop_pct)
+    return target, stop
+
 try:
     sp500_current, sp500_prev = get_sp500_data()
     sp500_change = ((sp500_current - sp500_prev) / sp500_prev * 100) if (sp500_current and sp500_prev) else 0.87
-
     vix_level = get_vix() or 14.2
     ten_year_yield = get_10y_yield() or 4.32
-
     market_time = datetime.now(pytz.timezone('US/Eastern')).strftime("%-I:%M %p ET")
     market_date = datetime.now(pytz.timezone('US/Eastern')).strftime("%b %d, %Y")
     sentiment = "RISK-ON" if sp500_change > 0 else "RISK-OFF" if sp500_change < -0.5 else "NEUTRAL"
@@ -76,7 +83,6 @@ c3.metric("VIX", f"{vix_level:.1f}" if vix_level else "—")
 c4.metric("10Y", f"{ten_year_yield:.2f}%" if ten_year_yield else "—")
 
 st.markdown("---")
-
 st.markdown("### Macro Summary")
 st.write("Markets ripping on Fed pivot speculation. Tech leading charge as bond yields compress. Smart money rotating into cyclicals - this feels like the early innings of a new leg up. But watch for gamma squeeze if VIX drops below 13.")
 st.markdown("**Macro Drivers:** Fed Pivot | Yield Compression | Tech Rally | Dollar Weakening")
@@ -111,43 +117,47 @@ for t in trade_tickers:
     prices[t] = get_price(t)
 
 trades = [
-    ("NVDA", "NVIDIA", "LONG", "AI infrastructure build-out accelerating. Blackwell margins expanding.", "Market", 145, 118, "⭐⭐⭐", "Q2 earnings"),
-    ("JPM", "JPMorgan", "LONG", "Net interest income floor is in. Credit quality better than feared.", "Market", 250, 195, "⭐⭐", "Fed cuts"),
-    ("TLT", "20+ Year Treasury", "SHORT", "Bond bears throwing in the towel. Yield curve steepening.", "Market", 92, 105, "⭐⭐⭐", "Inflation"),
-    ("GOOGL", "Alphabet", "LONG", "Cloud accelerating, AI integration driving ad efficiency.", "Market", 210, 155, "⭐⭐", "Gemini 2.0"),
-    ("SMCI", "Super Micro", "SHORT", "Accounting concerns are real. Audit firm red flags.", "Market", 400, 650, "⭐⭐⭐", "Delayed 10-K"),
+    ("NVDA", "NVIDIA", "LONG", "AI infrastructure build-out. Blackwell margins expanding. Every hyperscaler deploying more GPUs.", "⭐⭐⭐", "Q2 earnings"),
+    ("JPM", "JPMorgan", "LONG", "Net interest income floor in. Credit quality better than feared. At 11x earnings - cheap for quality.", "⭐⭐", "Fed cuts boost NII"),
+    ("TLT", "20+ Year Treasury", "SHORT", "Bond bears throwing in towel. Yield curve steepening signals recession risk being priced out.", "⭐⭐⭐", "Inflation re-accelerates"),
+    ("GOOGL", "Alphabet", "LONG", "Cloud accelerating. AI integration driving ad efficiency. Waymo becoming real. Trading at discount to meta.", "⭐⭐", "Gemini 2.0 adoption"),
+    ("SMCI", "Super Micro", "SHORT", "Accounting concerns real. Audit firm red flags. Customer concentration risk. Liquidity story - buyer beware.", "⭐⭐⭐", "Delayed 10-K"),
 ]
 
 cols = st.columns(3)
-for i, (ticker, company, type_, thesis, entry, target, stop, stars, catalyst) in enumerate(trades):
+for i, (ticker, company, type_, thesis, stars, catalyst) in enumerate(trades):
     with cols[i % 3]:
         current_price = prices.get(ticker)
         if current_price:
-            entry_display = f"${current_price:.2f}"
-            upside = ((target - current_price) / current_price * 100) if type_ == "LONG" else ((current_price - target) / current_price * 100)
+            target, stop = calculate_target_stop(current_price, type_, target_pct=0.20, stop_pct=0.08)
+            upside = ((target - current_price) / current_price * 100)
             downside = ((current_price - stop) / current_price * 100) if type_ == "LONG" else ((stop - current_price) / current_price * 100)
             rrr = abs(upside / downside) if downside > 0 else 0
+            upside_display = f"+{upside:.1f}%"
+            downside_display = f"-{downside:.1f}%"
         else:
-            entry_display = entry
+            target = stop = 0
             upside = downside = rrr = 0
+            upside_display = downside_display = "—"
 
         badge_color = "green" if type_ == "LONG" else "red"
         st.markdown(f"**{ticker}** :{badge_color}-badge[{type_}]  \n{company}")
         if current_price:
-            st.markdown(f"💰 **Current:** ${current_price:.2f}")
+            st.markdown(f"💰 **${current_price:.2f}**")
         st.markdown(f"_{thesis}_")
-        st.markdown(f"**Entry:** {entry_display} | **Target:** ${target} | **Stop:** ${stop}")
-        if current_price and rrr > 0:
+        if current_price:
+            st.markdown(f"**Target:** ${target:.2f} ({upside_display}) | **Stop:** ${stop:.2f} ({downside_display})")
             st.markdown(f"{stars} RRR: {rrr:.1f}R | Cat: {catalyst}")
         else:
+            st.markdown(f"**Target:** — | **Stop:** —")
             st.markdown(f"{stars} Cat: {catalyst}")
 
 st.markdown("### ⚠️ Risk Radar")
 st.markdown(":red[FED PUT DISSOLVING] Powell pushing back on rate cuts. Market pricing 3 cuts, Fed may deliver 1.")
-st.markdown(":orange[TECH VALUATION] NVDA at 60x forward earnings. One bad earnings cycle and this melts.")
+st.markdown(":orange[TECH VALUATION] NVDA at elevated multiples. One bad earnings cycle and this melts.")
 st.markdown(":orange[GEOPOLITICAL SHOCK] Taiwan, Middle East, or Russia could spike VIX and reverse risk-on.")
 
 st.markdown("---")
 st.markdown("> 💰 **Trader's Note:** Remember: the market will test your patience before it tests your conviction. Scale in, don't all-in.")
 st.markdown("---")
-st.caption("Prices via Yahoo Finance. Delayed by ~15min. For informational purposes only. Not financial advice.")
+st.caption("Targets calculated as 20% upside / 8% stop from current price. Prices via Yahoo Finance (~15min delayed). Not financial advice.")
