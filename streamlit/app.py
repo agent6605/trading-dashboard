@@ -4,20 +4,20 @@ from datetime import datetime
 import pytz
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-import io
 
 st.set_page_config(page_title="Market Intelligence", page_icon="💰", layout="wide")
 
-@st.cache_data(ttl=60)
 def get_price(ticker):
     try:
         stock = yf.Ticker(ticker)
+        hist = stock.history(period="1d")
+        if not hist.empty:
+            return hist['Close'].iloc[-1]
         info = stock.info
         return info.get('currentPrice') or info.get('regularMarketPreviousClose')
-    except:
+    except Exception as e:
         return None
 
-@st.cache_data(ttl=3600)
 def get_sp500_data():
     try:
         spy = yf.Ticker("SPY")
@@ -28,7 +28,6 @@ def get_sp500_data():
     except:
         return None, None
 
-@st.cache_data(ttl=60)
 def get_vix():
     try:
         vix = yf.Ticker("^VIX")
@@ -39,7 +38,6 @@ def get_vix():
     except:
         return None
 
-@st.cache_data(ttl=3600)
 def get_10y_yield():
     try:
         tn = yf.Ticker("^TNX")
@@ -50,7 +48,6 @@ def get_10y_yield():
     except:
         return None
 
-@st.cache_data(ttl=3600)
 def get_history(ticker, period="1mo"):
     try:
         stock = yf.Ticker(ticker)
@@ -162,11 +159,17 @@ for i, (ticker, name, change, trend, bias) in enumerate(sectors):
 st.markdown("### Trade Ideas (Real-Time Prices)")
 
 trade_tickers = ["NVDA", "JPM", "TLT", "GOOGL", "SMCI"]
+
 prices = {}
 histories = {}
+
+st.write("Loading market data...")
+
 for t in trade_tickers:
-    prices[t] = get_price(t)
-    histories[t] = get_history(t, "1mo")
+    price = get_price(t)
+    hist = get_history(t, "1mo")
+    prices[t] = price
+    histories[t] = hist
 
 trades = [
     ("NVDA", "NVIDIA", "LONG", "AI infrastructure build-out. Blackwell margins expanding.", "⭐⭐⭐", "Q2 earnings"),
@@ -180,29 +183,36 @@ for i, (ticker, company, type_, thesis, stars, catalyst) in enumerate(trades):
     current_price = prices.get(ticker)
     hist = histories.get(ticker)
     
-    if current_price:
+    target = stop = 0
+    upside_display = downside_display = "—"
+    
+    if current_price and current_price > 0:
         target, stop = calculate_target_stop(current_price, type_, target_pct=0.20, stop_pct=0.08)
         upside = ((target - current_price) / current_price * 100)
         downside = ((current_price - stop) / current_price * 100) if type_ == "LONG" else ((stop - current_price) / current_price * 100)
         rrr = abs(upside / downside) if downside > 0 else 0
         upside_display = f"+{upside:.1f}%"
         downside_display = f"-{downside:.1f}%"
+        price_str = f"${current_price:.2f}"
+        target_str = f"${target:.2f}"
+        stop_str = f"${stop:.2f}"
+        rrr_str = f"RRR: {rrr:.1f}R"
     else:
-        target = stop = 0
-        upside = downside = rrr = 0
-        upside_display = downside_display = "—"
-
+        price_str = "—"
+        target_str = "—"
+        stop_str = "—"
+        rrr_str = ""
+    
     badge_color = "green" if type_ == "LONG" else "red"
     st.markdown(f"### {ticker} :{badge_color}-badge[{type_}]  \n**{company}**")
-    if current_price:
-        st.markdown(f"💰 **${current_price:.2f}**")
+    st.markdown(f"💰 **{price_str}**")
     st.markdown(f"_{thesis}_")
     
-    if current_price:
-        st.markdown(f"**Target:** ${target:.2f} ({upside_display}) | **Stop:** ${stop:.2f} ({downside_display})")
-        st.markdown(f"{stars} RRR: {rrr:.1f}R | Cat: {catalyst}")
+    if current_price and current_price > 0:
+        st.markdown(f"**Target:** {target_str} ({upside_display}) | **Stop:** {stop_str} ({downside_display})")
+        st.markdown(f"{stars} {rrr_str} | Cat: {catalyst}")
     else:
-        st.markdown(f"**Target:** — | **Stop:** —")
+        st.markdown(f"**Target:** {target_str} | **Stop:** {stop_str}")
         st.markdown(f"{stars} Cat: {catalyst}")
     
     if hist is not None and not hist.empty:
