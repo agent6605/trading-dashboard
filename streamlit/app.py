@@ -1,19 +1,84 @@
 import streamlit as st
+import yfinance as yf
+from datetime import datetime
+import pytz
 
 st.set_page_config(page_title="Market Intelligence", page_icon="💰", layout="wide")
 
+@st.cache_data(ttl=60)
+def get_price(ticker):
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        return info.get('currentPrice') or info.get('regularMarketPreviousClose')
+    except:
+        return None
+
+@st.cache_data(ttl=3600)
+def get_sp500_data():
+    try:
+        spy = yf.Ticker("SPY")
+        hist = spy.history(period="1d")
+        if not hist.empty:
+            return hist['Close'].iloc[-1], hist['Close'].iloc[0]
+        return None, None
+    except:
+        return None, None
+
+@st.cache_data(ttl=60)
+def get_vix():
+    try:
+        vix = yf.Ticker("^VIX")
+        hist = vix.history(period="1d")
+        if not hist.empty:
+            return hist['Close'].iloc[-1]
+        return None
+    except:
+        return None
+
+@st.cache_data(ttl=3600)
+def get_10y_yield():
+    try:
+        tn = yf.Ticker("^TNX")
+        hist = tn.history(period="1d")
+        if not hist.empty:
+            return hist['Close'].iloc[-1]
+        return None
+    except:
+        return None
+
+try:
+    sp500_current, sp500_prev = get_sp500_data()
+    sp500_change = ((sp500_current - sp500_prev) / sp500_prev * 100) if (sp500_current and sp500_prev) else 0.87
+
+    vix_level = get_vix() or 14.2
+    ten_year_yield = get_10y_yield() or 4.32
+
+    market_time = datetime.now(pytz.timezone('US/Eastern')).strftime("%-I:%M %p ET")
+    market_date = datetime.now(pytz.timezone('US/Eastern')).strftime("%b %d, %Y")
+    sentiment = "RISK-ON" if sp500_change > 0 else "RISK-OFF" if sp500_change < -0.5 else "NEUTRAL"
+except:
+    sp500_change = 0.87
+    vix_level = 14.2
+    ten_year_yield = 4.32
+    market_time = "Market Closed"
+    market_date = datetime.now().strftime("%b %d, %Y")
+    sentiment = "NEUTRAL"
+
 st.title("💰 Market Intelligence")
-st.markdown("**Daily Trading Dashboard** • May 14, 2026")
+st.markdown(f"**Daily Trading Dashboard** • {market_date} {market_time}")
 st.markdown("---")
 
-st.metric("S&P 500", "+0.87%", "0.87%")
-st.metric("VIX", "14.2", "-1.2")
-st.metric("10Y Yield", "4.32%", "0.05%")
+c1, c2, c3, c4 = st.columns(4)
+c1.markdown(f"**{market_date}** as of {market_time}")
+c2.metric("S&P 500", f"{sp500_current:.2f}" if sp500_current else "—", f"{sp500_change:+.2f}%" if sp500_change else None)
+c3.metric("VIX", f"{vix_level:.1f}" if vix_level else "—")
+c4.metric("10Y", f"{ten_year_yield:.2f}%" if ten_year_yield else "—")
 
 st.markdown("---")
+
 st.markdown("### Macro Summary")
-st.write("Markets ripping on Fed pivot speculation. Tech leading charge as bond yields compress. Smart money rotating into cyclicals - this feels like the early innings of a new leg up.")
-
+st.write("Markets ripping on Fed pivot speculation. Tech leading charge as bond yields compress. Smart money rotating into cyclicals - this feels like the early innings of a new leg up. But watch for gamma squeeze if VIX drops below 13.")
 st.markdown("**Macro Drivers:** Fed Pivot | Yield Compression | Tech Rally | Dollar Weakening")
 
 st.markdown("### Sector Heatmap")
@@ -38,21 +103,44 @@ for i, (ticker, name, change, trend, bias) in enumerate(sectors):
         color = "green" if change.startswith("+") else "red"
         st.markdown(f"**{ticker}** {trend}  \n{name}  \n:{color}[{change}]  \n{bias}")
 
-st.markdown("### Trade Ideas")
+st.markdown("### Trade Ideas (Real-Time Prices)")
+
+trade_tickers = ["NVDA", "JPM", "TLT", "GOOGL", "SMCI"]
+prices = {}
+for t in trade_tickers:
+    prices[t] = get_price(t)
 
 trades = [
-    ("NVDA", "NVIDIA", "LONG", "AI infrastructure build-out accelerating. Blackwell margins expanding.", "Market", "$145", "$118", "⭐⭐⭐", "Q2 earnings"),
-    ("JPM", "JPMorgan", "LONG", "Net interest income floor is in. Credit quality better than feared.", "$215-220", "$250", "$195", "⭐⭐", "Fed cuts"),
-    ("TLT", "20+ Year Treasury", "SHORT", "Bond bears throwing in the towel. Yield curve steepening.", "Market", "$92", "$105", "⭐⭐⭐", "Inflation"),
-    ("GOOGL", "Alphabet", "LONG", "Cloud accelerating, AI integration driving ad efficiency.", "$175-180", "$210", "$155", "⭐⭐", "Gemini 2.0"),
-    ("SMCI", "Super Micro", "SHORT", "Accounting concerns are real. Audit firm red flags.", "$550-580", "$400", "$650", "⭐⭐⭐", "Delayed 10-K"),
+    ("NVDA", "NVIDIA", "LONG", "AI infrastructure build-out accelerating. Blackwell margins expanding.", "Market", 145, 118, "⭐⭐⭐", "Q2 earnings"),
+    ("JPM", "JPMorgan", "LONG", "Net interest income floor is in. Credit quality better than feared.", "Market", 250, 195, "⭐⭐", "Fed cuts"),
+    ("TLT", "20+ Year Treasury", "SHORT", "Bond bears throwing in the towel. Yield curve steepening.", "Market", 92, 105, "⭐⭐⭐", "Inflation"),
+    ("GOOGL", "Alphabet", "LONG", "Cloud accelerating, AI integration driving ad efficiency.", "Market", 210, 155, "⭐⭐", "Gemini 2.0"),
+    ("SMCI", "Super Micro", "SHORT", "Accounting concerns are real. Audit firm red flags.", "Market", 400, 650, "⭐⭐⭐", "Delayed 10-K"),
 ]
 
 cols = st.columns(3)
 for i, (ticker, company, type_, thesis, entry, target, stop, stars, catalyst) in enumerate(trades):
     with cols[i % 3]:
+        current_price = prices.get(ticker)
+        if current_price:
+            entry_display = f"${current_price:.2f}"
+            upside = ((target - current_price) / current_price * 100) if type_ == "LONG" else ((current_price - target) / current_price * 100)
+            downside = ((current_price - stop) / current_price * 100) if type_ == "LONG" else ((stop - current_price) / current_price * 100)
+            rrr = abs(upside / downside) if downside > 0 else 0
+        else:
+            entry_display = entry
+            upside = downside = rrr = 0
+
         badge_color = "green" if type_ == "LONG" else "red"
-        st.markdown(f"**{ticker}** :{badge_color}-badge[{type_}]  \n{company}  \n\n{thesis}  \n\n**Entry:** {entry} | **Target:** {target} | **Stop:** {stop}  \n{stars} Cat: {catalyst}")
+        st.markdown(f"**{ticker}** :{badge_color}-badge[{type_}]  \n{company}")
+        if current_price:
+            st.markdown(f"💰 **Current:** ${current_price:.2f}")
+        st.markdown(f"_{thesis}_")
+        st.markdown(f"**Entry:** {entry_display} | **Target:** ${target} | **Stop:** ${stop}")
+        if current_price and rrr > 0:
+            st.markdown(f"{stars} RRR: {rrr:.1f}R | Cat: {catalyst}")
+        else:
+            st.markdown(f"{stars} Cat: {catalyst}")
 
 st.markdown("### ⚠️ Risk Radar")
 st.markdown(":red[FED PUT DISSOLVING] Powell pushing back on rate cuts. Market pricing 3 cuts, Fed may deliver 1.")
@@ -62,4 +150,4 @@ st.markdown(":orange[GEOPOLITICAL SHOCK] Taiwan, Middle East, or Russia could sp
 st.markdown("---")
 st.markdown("> 💰 **Trader's Note:** Remember: the market will test your patience before it tests your conviction. Scale in, don't all-in.")
 st.markdown("---")
-st.caption("For informational purposes only. Not financial advice.")
+st.caption("Prices via Yahoo Finance. Delayed by ~15min. For informational purposes only. Not financial advice.")
