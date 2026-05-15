@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 from datetime import datetime
 import pytz
+import pandas as pd
 
 st.set_page_config(page_title="Market Intelligence", page_icon="💰", layout="wide")
 
@@ -52,9 +53,7 @@ def get_history(ticker, period="1mo"):
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period=period)
-        if not hist.empty:
-            return hist['Close']
-        return None
+        return hist
     except:
         return None
 
@@ -139,7 +138,7 @@ cols = st.columns(3)
 for i, (ticker, company, type_, thesis, stars, catalyst) in enumerate(trades):
     with cols[i % 3]:
         current_price = prices.get(ticker)
-        history = histories.get(ticker)
+        hist = histories.get(ticker)
         
         if current_price:
             target, stop = calculate_target_stop(current_price, type_, target_pct=0.20, stop_pct=0.08)
@@ -166,11 +165,23 @@ for i, (ticker, company, type_, thesis, stars, catalyst) in enumerate(trades):
             st.markdown(f"**Target:** — | **Stop:** —")
             st.markdown(f"{stars} Cat: {catalyst}")
         
-        if history is not None and not history.empty:
-            st.markdown("###")
-            st.caption(f"📈 1M Price Chart")
-            chart_data = history.rename(ticker)
-            st.line_chart(chart_data, height=150, color=["#22c55e"])
+        if hist is not None and not hist.empty and 'Close' in hist.columns:
+            close_data = hist['Close'].rename(ticker)
+            min_val = close_data.min()
+            max_val = close_data.max()
+            margin = (max_val - min_val) * 0.1
+            y_min = min_val - margin
+            y_max = max_val + margin
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.caption("📈 Price (1M)")
+                st.line_chart(close_data, height=120, color=["#22c55e"])
+            with col2:
+                if 'Volume' in hist.columns:
+                    st.caption("📊 Volume")
+                    volume_data = hist['Volume'].fillna(0)
+                    st.bar_chart(volume_data, height=120, color=["#3b82f6"])
 
 st.markdown("### ⚠️ Risk Radar")
 st.markdown(":red[FED PUT DISSOLVING] Powell pushing back on rate cuts. Market pricing 3 cuts, Fed may deliver 1.")
@@ -180,4 +191,4 @@ st.markdown(":orange[GEOPOLITICAL SHOCK] Taiwan, Middle East, or Russia could sp
 st.markdown("---")
 st.markdown("> 💰 **Trader's Note:** Remember: the market will test your patience before it tests your conviction. Scale in, don't all-in.")
 st.markdown("---")
-st.caption("Targets: 20% upside / 8% stop. Chart: 1-month daily prices. Prices via Yahoo Finance (~15min delayed). Not financial advice.")
+st.caption("Targets: 20% upside / 8% stop. Charts: 1-month daily prices & volume. Prices via Yahoo Finance (~15min delayed). Not financial advice.")
