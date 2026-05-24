@@ -27,7 +27,7 @@ def create_price_volume_chart(hist, ticker: str):
     # Volume chart
     if 'Volume' in hist.columns:
         volume = hist['Volume'].fillna(0)
-        colors = ['#22c55e' if close.iloc[i] >= close.iloc[0] else '#ef4444' for i in range(len(volume))]
+        colors = ['#22c55e' if i == 0 or close.iloc[i] >= close.iloc[i-1] else '#ef4444' for i in range(len(volume))]
         ax_volume.set_facecolor('#0d1220')
         ax_volume.bar(dates, volume, color=colors, alpha=0.6, width=0.8)
         ax_volume.set_ylabel('Volume', color='#8b9ab5', fontsize=9)
