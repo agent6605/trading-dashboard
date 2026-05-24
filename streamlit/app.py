@@ -119,17 +119,17 @@ for t in trade_tickers:
     prices[t] = get_price(t)
     histories[t] = get_stock_history(t, "1mo")
 
-for i, trade in enumerate(TRADE_IDEAS):
-    render_trade_card(trade, prices.get(trade.ticker))
-
-    hist = histories.get(trade.ticker)
-    if hist is not None and not hist.empty:
-        fig = create_price_volume_chart(hist, trade.ticker)
-        if fig:
-            st.pyplot(fig)
-
-    if i < len(TRADE_IDEAS) - 1:
-        st.markdown("---")
+for i in range(0, len(TRADE_IDEAS), 2):
+    row_trades = TRADE_IDEAS[i:i+2]
+    cols = st.columns(2)
+    for j, trade in enumerate(row_trades):
+        with cols[j]:
+            render_trade_card(trade, prices.get(trade.ticker))
+            hist = histories.get(trade.ticker)
+            if hist is not None and not hist.empty:
+                fig = create_price_volume_chart(hist, trade.ticker)
+                if fig:
+                    st.pyplot(fig)
 
 render_risk_radar()
 st.markdown("---")
