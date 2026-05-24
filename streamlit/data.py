@@ -23,6 +23,15 @@ TRADE_IDEAS = [
 ]
 
 
+def determine_direction(hist, lookback: int = 20) -> str:
+    """Return 'LONG' or 'SHORT' based on recent price trend."""
+    if hist is None or len(hist) < 2:
+        return 'LONG'
+    recent = hist['Close'].iloc[-1]
+    prior = hist['Close'].iloc[-min(lookback, len(hist))]
+    return 'LONG' if recent >= prior else 'SHORT'
+
+
 def calculate_target_stop(current: float, type_: str, target_pct: float = 0.20, stop_pct: float = 0.08) -> tuple[float, float]:
     """Calculate target and stop prices based on current price."""
     if type_ == "LONG":

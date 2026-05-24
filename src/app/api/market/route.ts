@@ -190,6 +190,8 @@ export async function GET() {
   });
 
   const trades: TradeIdeaData[] = TRADE_IDEAS_BASE.map(t => {
+    const momentum = Math.random() * 2 - 1;
+    const type: 'LONG' | 'SHORT' = momentum >= 0 ? 'LONG' : 'SHORT';
     const conviction: Conviction = Math.random() > 0.5 ? 'HIGH' : 'MEDIUM';
     const entryMin = 50 + Math.random() * 500;
     const range = entryMin * 0.05;
@@ -199,9 +201,9 @@ export async function GET() {
     return {
       ticker: t.ticker,
       companyName: t.companyName,
-      type: t.type,
+      type,
       thesis: t.thesis,
-      entryZone: t.type === 'SHORT' ? entryZone : (Math.random() > 0.5 ? 'Market' : entryZone),
+      entryZone: type === 'SHORT' ? entryZone : (Math.random() > 0.5 ? 'Market' : entryZone),
       target,
       stop,
       conviction,
